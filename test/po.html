@@ -1,0 +1,399 @@
+<style>
+    .print-format table, .print-format tr, .print-format td, .print-format div, .print-format p {
+        line-height: 150%;
+        vertical-align: middle;
+    }
+
+    @media screen {
+        .print-format {
+            width: 210mm;
+            padding: 0.6in;
+            min-height: 297mm
+        }
+</style>
+
+<div>
+    <div id="header-html" class="hidden-pdf">
+        <div id="variables" style="display:none;">
+        </div>
+    </div>
+
+    <div class="letter-head">
+        {% if letter_head %}
+            {{ letter_head }}
+        {% else %}
+        <br><br><br><br>
+        {% endif %}
+    </div>
+
+    <div>
+        <table style="width: 100%;">
+            <thead>
+                <tr>
+                    <td style="text-align: center; width: 20%"></td>
+                    <td style="text-align: center; width: 60%; margin-top: 10px;"><font size="5em"><b>{% if doc.select_print_heading %} {{ doc.select_print_heading }} {% else %} Purchase Order {% endif %}</b></font></td>
+                    <td style="text-align: right; width: 20%"></td>
+                </tr>
+            </thead>
+        </table>
+    </div>
+
+    <div>
+        <table style="width: 100%;">
+            <thead>
+                <tr style="background-color: #dddddd;">
+                    <td style="text-align: center; width: 40%">Invoice ID: {% if doc.name %} {{ doc.name }} {% endif %}</td>
+                    <td style="text-align: center; width: 20%">Dated: {{ doc.get_formatted('transaction_date') }}</td>
+                    <td style="text-align: center; width: 40%">Pay before: {{ doc.get_formatted('schedule_date') }}</td>
+                </tr>
+            </thead>
+        </table>
+    </div>
+
+	<div style="margin-top: 10px;"> <center>Invoiced to: <font size="4em"><b>{{ doc.supplier_name }}</b></font></center>
+	</div>
+
+	<div align="center">Contact: <font size="2em"><b>
+		{% if doc.contact_person %}
+		{{ doc.contact_display }},
+		{% endif %}
+		{% if doc.contact_email %}
+		{{ doc.contact_email }},
+		{% endif %}
+		{% if doc.contact_mobile %}
+		{{ doc.contact_mobile }}
+		{% endif %}</b></font>
+	</div>
+
+	<div>
+		<table style="width: 100%;">
+			<thead>
+				<tr>
+					<td class="left"><u>Billing Address:</u><br>
+						{{ doc.address_display }}</td>
+					<td class="left"><u>Delivery Receiving Address:</u><br>
+						{{ doc.shipping_address_display }}</td>
+				</tr>
+			</thead>
+		</table>
+	</div>
+
+    <div>
+        <table style="width: 100%;">
+            <thead>
+                <tr align="center" >
+                    <td>PO ID: {{ doc.name }}<br>PO Date: {{ doc.get_formatted("transaction_date") }}</td>
+                    <td>Sales Order ID: {{ doc.name }}<br>Sales Order Date: {{ doc.get_formatted("transaction_date") }}</td>
+                    <td>Transportation Mode: {% if doc.mode_of_transport %} {{ doc.mode_of_transport }} {% endif %}<br>
+						Vehicle ID: {% if doc.vehicle_no %}{{ doc.vehicle_no }} {% endif %}</td>
+                </tr>
+            </thead>
+        </table>
+    </div>
+
+    <div>
+        <table style="width: 100%;">
+            <thead  class="align-middle;">
+                <tr style="background-color: #dddddd;" >
+                    <th style="align: center;" width="3%"> # </th>
+                    <th style="align: center;" width="auto">Item Description<br>[HSN/SAC]</th>
+                    <th style="align: center;" width="8%"  class="text-center">Qty<br>UOM</th>
+                    <th style="align: center;" width="14%">Rate<br>Total Value</th>
+                    {% if doc.taxes | length > 1 %}
+                        <th style="align: center;" width="12%"  class="text-right" >CGST %<br>Amount</th>
+                        <th style="align: center;" width="12%"  class="text-right" >SGST %<br>Amount</th>
+                    {% else %}
+                    <th style="align: center;" width="12%" class="text-right" >IGST %<br>Amount</th>
+                    {% endif %}
+                    <th style="align: center;" width="14%"  class="text-right" >Gross<br>Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% set count = 1 %}
+                {% set gst_total = {'total': 0} %}
+                {% set total = {'total': 0} %}
+                {% set gross = {'total': 0} %}
+                {%- for row in doc.items -%}
+                <tr>
+                    <td >{{ loop.index }}</td>
+                    <td class="align-middle; text-left">{% if row.brand %} {{ row.brand }}<br>{% endif %}
+                    {% if row.item_code %} {{ row.item_code }} - {% endif %}
+                    {% if row.description %} {{ row.description }} <br/> {% endif %}
+                    [HSN/SAC: {% if row.gst_hsn_code %}{{row.gst_hsn_code}}{% endif %}]
+                    <br/>{% if row.discount_amount%}
+                      Added &#8377;{{ (row.discount_amount*row.qty)|round(2, 'ceil') }} ({{ row.get_formatted("discount_percentage") }}) Discount{% endif %}
+                    </td>
+                    <td class="text-center" >{{ row.qty }}<br>{{ row.uom }}</td>
+                    <td >{{ row.get_formatted("rate") }}<br>{{ row.get_formatted("amount") }}</td>
+
+                    {% if doc.total_taxes_and_charges == 0 %}
+                        <td >{{ doc.get_formatted("total_taxes_and_charges") }} </td>
+                        <td >{{ row.get_formatted("amount") }} </td>
+                    {% endif %}
+
+                    {% set tax_temp=row.item_tax_template %}
+                    {% if tax_temp %}
+                      {% set tax = frappe.get_doc('Item Tax Template', tax_temp) %}
+                      {%- for rows in doc.taxes -%}
+                        {% if doc.taxes | length > 1 %}
+                          {% if loop.index == 1 %}
+                            {%- for tax_row in tax.taxes -%}
+                              {% set taxval = tax_row.tax_rate %}
+                              {% set taxval = taxval/100 %}
+                              {% set item_val = row.amount %}
+                              {% set gst = item_val*taxval %}
+                              {% if gross.update({'total': row.amount + gst}) %} {% endif %}
+                              {% if gst_total.update({'total': gst_total.total+gst}) %} {% endif %}
+                              <td class="text-right" >{{ tax_row.get_formatted("tax_rate") }}%<br>&#8377;{{ gst|round(2, 'ceil') }}</td>
+                              {% if loop.index == 2 %}
+                                <td class="text-right" >&#8377;{{ (row.amount + (gst*2))|round(2, 'ceil') }}</td>
+                              {% endif %}
+                            {%- endfor -%}
+                          {% endif %}
+                        {% else %}
+                          {%- for tax_row in tax.taxes -%}
+                            {% set taxval = tax_row.tax_rate %}
+                            {% set taxval = taxval/100 %}
+                            {% set item_val = row.amount %}
+                            {% set gst = item_val*taxval %}
+                            <td class="text-right" >{{ tax_row.get_formatted("tax_rate") }}%<br> &#8377;{{ gst|round(2, 'ceil') }}</td>
+                            <td class="text-right" >&#8377;{{ (row.amount + gst ) |round(2, 'ceil')}}</td>
+                          {%- endfor -%}
+                        {% endif %}
+                      {%- endfor -%}
+                    {% else %}
+                      {%- for rows in doc.taxes -%}
+                        {% if doc.taxes | length > 1 %}
+                          {% set taxval = rows.rate %}
+                          {% set taxval = taxval/100 %}
+                          {% set item_val = row.amount %}
+                          {% set gst = item_val*taxval %}
+                          {% if gross.update({'total': row.amount + gst}) %} {% endif %}
+                          {% if gst_total.update({'total': gst_total.total+gst}) %} {% endif %}
+                          <td class="text-right" >{{ rows.get_formatted("rate") }}%<br>&#8377;{{ gst|round(2, 'ceil') }}</td>
+                          {% if loop.index == 2 %}
+                            <td class="text-right">&#8377;{{ row.amount + (gst*2) }}</td>
+                          {% endif %}
+                        {% else %}
+                          {% set taxval = rows.rate %}
+                          {% set taxval = taxval/100 %}
+                          {% set item_val = row.amount %}
+                          {% set gst = item_val*taxval %}
+                          <td class="text-right" >{{ rows.get_formatted("rate") }}%<br> &#8377;{{ gst|round(2, 'ceil') }}</td>
+                          <td class="text-right" >&#8377;{{ row.amount + gst}}</td>
+                        {% endif %}
+                      {%- endfor -%}
+                    {% endif %}
+                </tr>
+                <!--{% set count = count + 1 %}	-->
+                {%- endfor -%}
+                {%- set total_amount = 0.0 -%}
+                {%- for item in doc.taxes -%}
+                {% set total_amount = total_amount + (item.tax_amount) %}
+                {% endfor %}
+                <tr align="center" style="background-color: #dddddd;">
+                    <th></th>
+                    <th>Total for  {{ doc.items | length }}  Items </th>
+                    <th class="text-center" >{{ doc.get_formatted("total_qty") }}</th>
+                    <th>{{ doc.get_formatted("base_total") }} </th>
+                    {% if doc.total_taxes_and_charges == 0 %}
+                        <th >{{ doc.get_formatted("total_taxes_and_charges") }} </th>
+                        <th >{{ doc.get_formatted("base_total") }} </th>
+                    {% endif %}
+                    {%- for rows in doc.taxes -%}
+                      {% if doc.taxes | length > 1 %}
+                        {% set taxval = rows.rate %}
+                        {% set taxval = taxval/100 %}
+                        {% set item_val = doc.base_total %}
+                        {% set gst = item_val*taxval %}
+                        {% if loop.index <= 2 %}
+                        <th class="text-right" > &#8377;{{ (doc.total_taxes_and_charges/2) |round(2, 'ceil') }}</th>
+                        {% endif %}
+                        {% if loop.index == 2 %}
+                          <th class="text-right" >&#8377;{{ doc.base_total + (doc.total_taxes_and_charges) }}</th>
+                        {% endif %}
+                      {% else %}
+                        {% set taxval = rows.rate %}
+                        {% set taxval = taxval/100 %}
+                        {% set item_val = doc.base_total %}
+                        {% set gst = item_val*taxval %}
+                        <th class="text-right" > {{doc.get_formatted("total_taxes_and_charges") }}</th>
+                        <th class="text-right" >&#8377;{{ doc.base_total + doc.total_taxes_and_charges}}</th>
+                      {% endif %}
+                    {%- endfor -%}
+                </tr>
+
+                {% if doc.additional_discount_percentage %}
+                <tr align="center" style="background-color: #dddddd;">
+                    <th></th>
+                    <th>Less Discount before Tax</th>
+                    <th>{{ doc.get_formatted("additional_discount_percentage") }} %</th>
+                    <th>{{ doc.get_formatted("discount_amount") }}</th>
+                    {% if doc.taxes | length > 1 %}
+                    <th></th>
+                    <th></th>
+                    {% else %}
+                    <th></th>
+                    {% endif %}
+                    <th></th>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+    <div>
+        <table style="width: 100%; vertical-align: middle;">
+            <thead>
+                <tr style="vertical-align: middle;">
+                    <td style="text-align: left; vertical-align: bottom;"><br><font size="3em" ><b>Rounded Invoice Value: {{ doc.get_formatted("rounded_total" )}}</b></font><br> {{ doc.get_formatted("in_words")}}</td>
+                    <td style="text-align: right; vertical-align: middle;">Total Amount before Tax:<br>
+                    Total GST:<br>
+                    <b>Grand Total:</b></td>
+                    <td style="text-align: right; vertical-align: middle;">{{ doc.get_formatted("net_total") }}<br>
+                      {{ doc.get_formatted("total_taxes_and_charges") }} <br>
+                       <b>{{ doc.get_formatted("grand_total") }}</b>
+                    </td>
+                </tr>
+            </thead>
+        </table>
+    </div>
+
+    <!-- Tax Breakup Section -->
+    <div style="margin-top: 5px;">
+        <b>GST Break-up:</b>
+    </div>
+
+    <div>
+        <!--{{  doc.other_charges_calculation }}-->
+        <table style="width: 100%;">
+            <thead>
+            {%- for rows in doc.taxes -%}
+            {% if loop.index == 1 %}
+                <tr align="center" style="background-color: #dddddd;">
+                    <td style="vertical-align: middle;" >#</td>
+                    <td>HSN/SAC</td>
+                    {% if doc.taxes | length > 1 %}
+                    <td>SGST</td>
+                    <td>CGST</td>
+                    {% else %}
+                    <td >IGST</td>
+                    {% endif %}
+                    <td>GST Total</td>
+                </tr>
+            {% endif %}
+            {%- endfor -%}
+            </thead>
+            <tbody>
+				{% for item, item_group in doc.items|groupby('gst_hsn_code') %}
+				<tr  align="center">
+					<td> {{ loop.index }}</td>
+					<td>{{item}}</td>
+                    {% set key_value = {'val': 1} %}
+                    {%- for row in item_group -%}
+                      {% set tax_temp=row.item_tax_template %}
+                      {% set item_ssn=row.gst_hsn_code %}
+                      {% if (item == item_ssn) and (1 == key_value.val) %}
+                        {% if key_value.update({'val': 0}) %} {% endif %}
+                          {% if tax_temp %}
+                          {%- for rows in doc.taxes -%}
+                            {% if doc.taxes | length > 1 %}
+                            {% if loop.index == 1 %}
+                            {% set tax = frappe.get_doc('Item Tax Template', tax_temp) %}
+                            {%- for tax_row in tax.taxes -%}
+                              {% set total_sum = item_group|sum(attribute='amount') %}
+                              {% set taxval = tax_row.tax_rate %}
+                              {% set taxval = taxval/100 %}
+                              {% set item_val = row.amount %}
+                              {% set gst = total_sum*taxval %}
+                              {% if doc.taxes | length > 1 %}
+                                  <td>&#8377;{{ gst|round(2, 'ceil') }}</td>
+                              {% else %}
+                                <td>&#8377;{{ gst|round(2, 'ceil') }}</td>
+                                <td>&#8377;{{ gst|round(2, 'ceil') }}</td>
+                              {% endif %}
+                              {% if loop.index == 2 %}
+                                <td>&#8377;{{ (gst*2)|round(2, 'ceil') }}</td>
+                              {% endif %}
+                            {%- endfor -%}
+                            {% endif %}
+                            {% else %}
+                            {% set tax = frappe.get_doc('Item Tax Template', tax_temp) %}
+                            {%- for tax_row in tax.taxes -%}
+                              {% set total_sum = item_group|sum(attribute='amount') %}
+                              {% set taxval = tax_row.tax_rate %}
+                              {% set taxval = taxval/100 %}
+                              {% set item_val = row.amount %}
+                              {% set gst = total_sum*taxval %}
+                              {% if doc.taxes | length > 1 %}
+                                  <td>&#8377;{{ gst|round(2, 'ceil') }}</td>
+                              {% else %}
+                                <td>&#8377;{{ gst|round(2, 'ceil') }}</td>
+                                <td> &#8377;{{ gst|round(2, 'ceil') }}</td>
+                              {% endif %}
+                              {% if loop.index == 2 %}
+                                <td>&#8377;{{ (gst*2)|round(2, 'ceil') }}</td>
+                              {% endif %}
+                            {%- endfor -%}
+                            {% endif %}
+                        {%- endfor -%}
+                        {% else %}
+                          {%- for rows in doc.taxes -%}
+                            {% set total_sum = item_group|sum(attribute='amount') %}
+                            {% set taxval = rows.rate %}
+                            {% set taxval = taxval/100 %}
+                            {% set item_val = total_sum %}
+                            {% set gst = item_val*taxval %}
+                            {% if doc.taxes | length > 1 %}
+                              <td>&#8377;{{ gst|round(2, 'ceil') }}</td>
+                            {% else %}
+                              <td>&#8377;{{ gst|round(2, 'ceil') }}</td>
+                              <td>&#8377;{{ gst|round(2, 'ceil') }}</td>
+                            {% endif %}
+                            {% if loop.index == 2 %}
+                              <td>&#8377;{{ (gst*2)|round(2, 'ceil') }}</td>
+                            {% endif %}
+                          {%- endfor -%}
+                        {% endif %}
+                      {% endif %}
+                    {%- endfor -%}
+                </tr>
+                {%- endfor -%}
+            </tbody>
+        </table>
+    </div>
+
+    <div style="margin-top: 10px;">
+        <b>Declaration, Terms & Conditions:</b>
+        {{ doc.get_formatted("terms") }}
+    </div>
+    <div>
+        <table style="width: 100%;">
+            <thead>
+                <tr>
+                    <td style="text-align: left;">Satisfied Product/s Received<br><br>Name and signature of the Receiver.</td>
+                    <td style="text-align: center;"><font size="4em" ><b>THANK YOU</b></font><br>for being our Customer<br/>Looking forward to serve you again!</td>
+                    <td style="text-align: right;">Prepared by {{ frappe.get_fullname(modified_by) }}<br><br>Company Stamp and Signature.</td>
+                </tr>
+            </thead>
+        </table>
+    </div>
+     <p style="text-align: center"><small><b>Regd. Office: #464C, 1st Floor, Kavumpady, Thrikalathur, Payipra, Ernakulam, Kerala, India - 68354</b><br/>
+        NB: Company Stamp or Signature not required, if this document has received by email.</small></p>
+        <div id="footer-html" class="visible-pdf">
+        {% if not no_letterhead and footer %}
+        <div class="letter-head-footer">
+            {{ footer }}
+        </div>
+        {% endif %}
+        <p class="leftpane small page-number visible-pdf">
+            Invoice ID: {{ doc.name }}
+        </p>
+        <p class="middlepane small page-number visible-pdf">
+            {{ _("Page {0} of {1}").format('<span class="page"></span>', '<span class="topage"></span>') }}
+        </p>
+        <p class="rightpane small page-number visible-pdf">
+           Invoiced to: {{ doc.customer_name }}
+        </p>
+        <br/><br/>
+    </div>
+</div>
